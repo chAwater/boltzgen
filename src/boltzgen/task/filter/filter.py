@@ -770,13 +770,13 @@ class Filter(Task):
         • Designs generated: {n_total}
         • Designs passing all filters: {n_pass_filters}
 
-        • MMCIF files of final designs are in:  
-          {self.div_dir}  
+        • MMCIF files of final designs are in:
+          {self.div_dir}
 
-        • Metrics and sequences of {self.budget} final designs are in:  
+        • Metrics and sequences of {self.budget} final designs are in:
           {self.outdir}/final_designs_metrics_{self.budget}.csv
-          
-        • Metrics of all designs are in:  
+
+        • Metrics of all designs are in:
           {self.outdir}/all_designs_metrics.csv
 
         You can rerun filtering (very quick), using this command with changed parameters:
@@ -784,7 +784,7 @@ class Filter(Task):
         You can also rerun filtering in a jupyter notebook if you want using `filter.ipynb`
 
          What was run to produce this in the Filter task:
-         1. Filtering: each design is evaluated against mandatory thresholds. 
+         1. Filtering: each design is evaluated against mandatory thresholds.
          2. Ranking: for every metric we compute its rank, then scale it by the metric’s inverse-importance weight. Designs with fewer passed filters are automatically penalised because the ranking key is the pair (num_filters_passed, metric). The overall quality score is the worst (maximum) of these scaled ranks. The {self.top_budget} best designs form the Top set.
          3. Diversity: a lazy-greedy algorithm selects {self.budget} designs that jointly maximise quality and
             minimise sequence similarity (sequence-identity distance). The trade-off is controlled by α = {self.alpha}:
@@ -793,7 +793,7 @@ class Filter(Task):
               • Quality – composite of metrics such as iPTM, salt-bridges, ΔSASA, etc. Each metric has an "inverse importance" weight (see "Sorting Criteria" table). A larger weight divides the rank by a bigger number and therefore down-weights that metric.
               • Diversity – 1 − sequence identity between designs.
             We use α = {self.alpha}, meaning {round((1 - self.alpha) * 100)} % emphasis on quality, {round(self.alpha * 100)} % on diversity.
- 
+
           """
 
         csv_expl_rows = [

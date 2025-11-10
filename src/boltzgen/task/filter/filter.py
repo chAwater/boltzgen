@@ -1288,29 +1288,51 @@ class Filter(Task):
             return
 
         # Create histogram with valid data
-        ax.hist(valid_data_all, bins=30, color="lightgray", alpha=0.6, label="all")
+        hist_bins = np.linspace(valid_data_all.min(), valid_data_all.max(), 30)
+        ax.hist(valid_data_all, bins=hist_bins, color="lightgray", alpha=0.6, label="all")
+
+        two_ax = 0
+        two_ax_ymax = 0
 
         if len(valid_data_red) > 0:
-            ax.hist(
+            ax2 = ax.twinx()
+            two_ax = 1
+            counts_red, _, _ = ax2.hist(
                 valid_data_red,
-                bins=30,
+                bins=hist_bins,
                 histtype="step",
                 linewidth=1.7,
                 color="red",
                 label="top-quality",
             )
+            two_ax_ymax = max(two_ax_ymax, counts_red.max())
+
         if len(data_blue) and len(valid_data_blue) > 0:
-            ax.hist(
+            if not two_ax:
+                ax2 = ax.twinx()
+                two_ax = 1
+
+            counts_blue, _, _ = ax2.hist(
                 valid_data_blue,
-                bins=30,
+                bins=hist_bins,
                 histtype="step",
                 linewidth=1.7,
                 color="blue",
                 linestyle="--",
                 label="quality+diversity",
             )
+            two_ax_ymax = max(two_ax_ymax, counts_blue.max())
 
         ax.set_xlabel(metric)
         ax.set_ylabel("count")
         ax.set_title(f"{metric}{suffix}")
-        ax.legend()
+
+        if two_ax:
+            ax2.set_ylim(0, two_ax_ymax*1.5)
+            ax2.tick_params(axis='y', labelcolor='red')
+            handles1, labels1 = ax.get_legend_handles_labels()
+            handles2, labels2 = ax2.get_legend_handles_labels()
+
+            ax.legend(handles1+handles2, labels1+labels2)
+        else:
+            ax.legend()

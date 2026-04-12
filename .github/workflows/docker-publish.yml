@@ -40,11 +40,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Aliyun Container Registry
+        if: vars.ALIYUN_REGISTRY != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ vars.ALIYUN_REGISTRY && format('{0}/{1}/boltzgen', vars.ALIYUN_REGISTRY, vars.ALIYUN_NAME_SPACE) || '' }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -77,3 +87,86 @@ jobs:
           package-type: container
           min-versions-to-keep: 5
           ignore-versions: ^v\d+\.\d+\.\d+$
+
+  gpu-smoke-test:
+    needs: build-and-push
+    runs-on: [self-hosted, gpu]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    env:
+      TEST_DIR: /tmp/boltzgen-ci-${{ github.run_id }}
+      DOCKER_CONFIG: /tmp/boltzgen-ci-docker-${{ github.run_id }}
+
+    steps:
+      - name: Compute short SHA
+        id: short-sha
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set test image
+        id: test-image
+        # Use short SHA tag — always generated regardless of branch or trigger
+        run: |
+          SHA=${{ steps.short-sha.outputs.sha }}
+          if [ -n "${{ vars.ALIYUN_REGISTRY }}" ]; then
+            echo "name=${{ vars.ALIYUN_REGISTRY }}/${{ vars.ALIYUN_NAME_SPACE }}/boltzgen:${SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=ghcr.io/${{ github.repository }}:${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: example/vanilla_protein
+
+      - name: Log in to Aliyun Container Registry
+        if: vars.ALIYUN_REGISTRY != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Log in to GitHub Container Registry
+        if: vars.ALIYUN_REGISTRY == ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull ${{ steps.test-image.outputs.name }}
+
+      - name: Run smoke test pipeline
+        run: |
+          mkdir -p "$TEST_DIR"
+          docker run --rm --gpus all \
+            --runtime=nvidia \
+            --shm-size=8g \
+            -u "$(id -u):$(id -g)" \
+            -e HF_ENDPOINT="${HF_ENDPOINT:-}" \
+            ${WEIGHT_CACHE:+-v "$WEIGHT_CACHE":/cache} \
+            -v "${{ github.workspace }}/example/vanilla_protein":/example \
+            -v "$TEST_DIR":/workdir \
+            ${{ steps.test-image.outputs.name }} \
+            boltzgen run /example/1g13prot.yaml \
+              --output /workdir/test \
+              --protocol protein-anything \
+              --num_designs 2 --budget 1
+        env:
+          HF_ENDPOINT: ${{ vars.HF_ENDPOINT }}
+          WEIGHT_CACHE: ${{ vars.WEIGHT_CACHE }}
+
+      - name: Verify output exists
+        run: |
+          if [ ! -d "$TEST_DIR/test" ]; then
+            echo "::error::Pipeline output directory not found"
+            exit 1
+          fi
+          echo "=== Pipeline output ==="
+          ls -lR "$TEST_DIR/test" | head -50
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf "$TEST_DIR" "$DOCKER_CONFIG"
+          docker image prune -f

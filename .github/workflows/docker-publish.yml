@@ -98,19 +98,18 @@ jobs:
       DOCKER_CONFIG: /tmp/boltzgen-ci-docker-${{ github.run_id }}
 
     steps:
-      - name: Compute short SHA
-        id: short-sha
-        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
       - name: Set test image
         id: test-image
-        # Use short SHA tag — always generated regardless of branch or trigger
         run: |
-          SHA=${{ steps.short-sha.outputs.sha }}
-          if [ -n "${{ vars.ALIYUN_REGISTRY }}" ]; then
-            echo "name=${{ vars.ALIYUN_REGISTRY }}/${{ vars.ALIYUN_NAME_SPACE }}/boltzgen:${SHA}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG=${GITHUB_SHA::7}
           else
-            echo "name=ghcr.io/${{ github.repository }}:${SHA}" >> "$GITHUB_OUTPUT"
+            TAG=latest
+          fi
+          if [ -n "${{ vars.ALIYUN_REGISTRY }}" ]; then
+            echo "name=${{ vars.ALIYUN_REGISTRY }}/${{ vars.ALIYUN_NAME_SPACE }}/boltzgen:${TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=ghcr.io/${{ github.repository }}:${TAG}" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4
